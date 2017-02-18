@@ -7,5 +7,5 @@ import (
 )
 
 func ContentDigestToBase64(digest *build_remote.ContentDigest) string {
-	return fmt.Sprintf("v%2d|%s", digest.Version, base64.RawStdEncoding.EncodeToString(digest.Digest))
+	return fmt.Sprintf("v%d_%s", digest.Version, base64.RawStdEncoding.EncodeToString(digest.Digest))
 }

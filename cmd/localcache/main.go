@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"github.com/mwitkow/bazel-distcache/service/executioncache"
 	"google.golang.org/grpc/grpclog"
+	"github.com/mwitkow/bazel-distcache/service/cas"
 )
 
 
@@ -31,6 +32,7 @@ func main() {
 	grpclog.SetLogger(log.StandardLogger())
 	grpcServer := grpc.NewServer()
 	build_remote.RegisterExecutionCacheServiceServer(grpcServer, executioncache.NewLocal())
+	build_remote.RegisterCasServiceServer(grpcServer, cas.NewLocal())
 
 	log.Infof("listening for insecure gRPC on: %v", listener.Addr().String())
 	if err := grpcServer.Serve(listener); err != nil {

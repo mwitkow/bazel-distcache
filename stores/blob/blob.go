@@ -15,30 +15,30 @@ type Store interface {
 	// Exists returns whether the given blob exists for its digest.
 	// If errors occur, they are reported as errors, and should fail builds.
 	Exists(ctx context.Context, blobDigest *build_remote.ContentDigest) (bool, error)
-	// Read returns a BlobReader for the digest.
+	// Read returns a Reader for the digest.
 	// Must return grpc.NotFound error if no blob exists. Other errors will cause failure of builds.
-	Read(ctx context.Context, blobDigest *build_remote.ContentDigest) (BlobReader, error)
+	Read(ctx context.Context, blobDigest *build_remote.ContentDigest) (Reader, error)
 	// Write returns a BlogWriter for the digest.
-	Write(ctx context.Context, blobDigest *build_remote.ContentDigest) (BlobWriter, error)
+	Write(ctx context.Context, blobDigest *build_remote.ContentDigest) (Writer, error)
 }
 
-type blobDigest interface {
+type digestGetter interface {
 	// Digest returns the content digest of the blob served.
-	Digest() *build_remote.ContentDigest)
+	Digest() *build_remote.ContentDigest
 }
 
-// BlobReader is an interface for accessing blobs in store.
+// Reader is an interface for accessing blobs in store.
 // Each Read is guaranteed to fill the buffer before returning, unless there are fewer items remaining or an error occured.
 // Users *must* call Close() when they're done reading.
-type BlobReader interface {
+type Reader interface {
 	io.ReadCloser
-	blobDigest
+	digestGetter
 }
 
-// BlobWriter is an interface for writing blob contents into the store.
+// Writer is an interface for writing blob contents into the store.
 // Each Write is guranteed to write the whole buffer, unless an error occurs.
 // Users *must* call Close() when they're done writing.
-type BlobWriter interface {
+type Writer interface {
 	io.WriteCloser
-	blobDigest
+	digestGetter
 }

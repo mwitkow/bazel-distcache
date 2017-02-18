@@ -45,7 +45,7 @@ func (s *onDisk) init() error {
 		return fmt.Errorf("ondisk blobstore initialization error: %v", err)
 	}
 	for _, f := range files {
-		s.cacheSize(f.Name())
+		s.cacheSize(f.Name(), f.Size())
 	}
 	return nil
 }
@@ -71,7 +71,7 @@ func (s *onDisk) Exists(ctx context.Context, blobDigest *build_remote.ContentDig
 	return s.getSize(key) != sizeNoExist, nil
 }
 
-func (s *onDisk) Read(ctx context.Context, blobDigest *build_remote.ContentDigest) (BlobReader, error) {
+func (s *onDisk) Read(ctx context.Context, blobDigest *build_remote.ContentDigest) (Reader, error) {
 	key := util.ContentDigestToBase64(blobDigest)
 	fileName := path.Join(s.basePath, key)
 	size := s.getSize(key)
@@ -85,12 +85,12 @@ func (s *onDisk) Read(ctx context.Context, blobDigest *build_remote.ContentDiges
 		}
 		return nil, grpc.Errorf(codes.Internal, "ondisk blobstore can't open file: %v", err)
 	}
-	// Make sure we expose the size of the blob stored, since we're reusing the blobDigest object.
+	// Make sure we expose the size of the blob stored, since we're reusing the digestGetter object.
 	blobDigest.SizeBytes = size
 	return &blobFile{digest: blobDigest, file: file}, nil
 }
 
-func (s *onDisk) Write(ctx context.Context, blobDigest *build_remote.ContentDigest) (BlobWriter, error) {
+func (s *onDisk) Write(ctx context.Context, blobDigest *build_remote.ContentDigest) (Writer, error) {
 	key := util.ContentDigestToBase64(blobDigest)
 	fileName := path.Join(s.basePath, key)
 	file, err := os.Create(fileName)
@@ -101,7 +101,7 @@ func (s *onDisk) Write(ctx context.Context, blobDigest *build_remote.ContentDige
 	return &blobFile{digest: blobDigest, file: file}, nil
 }
 
-// blobFile is a general implementation of both BlobWriter and BlobReader, and which one it is
+// blobFile is a general implementation of both Writer and Reader, and which one it is
 // depends on the particular mode of the file open underneath
 type blobFile struct {
 	digest *build_remote.ContentDigest
