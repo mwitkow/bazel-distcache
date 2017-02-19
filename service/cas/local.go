@@ -1,19 +1,22 @@
 package cas
 
 import (
-	"github.com/mwitkow/bazel-distcache/proto/build/remote"
+	"fmt"
+	"io"
 
+	log "github.com/Sirupsen/logrus"
+	"github.com/mwitkow/bazel-distcache/common/sharedflags"
 	"github.com/mwitkow/bazel-distcache/stores/blob"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"io"
-	"github.com/mwitkow/bazel-distcache/common/sharedflags"
-	log "github.com/Sirupsen/logrus"
+
+	"github.com/mwitkow/bazel-distcache/proto/build/remote"
 )
+
 var (
 	chunkSizeBytes = sharedflags.Set.Int("casservice_local_chunk_size_bytes",
-		2 * 1024 * 1024,
+		2*1024*1024,
 		"Size of chunk streamed down to bazel clients. Can be max 4MB due to gRPC limits.")
 )
 
@@ -49,8 +52,8 @@ func (s *local) Lookup(ctx context.Context, req *build_remote.CasLookupRequest) 
 		// see https://github.com/bazelbuild/bazel/blob/1575652972d80f224fb3f7398eef3439e4f5a5dd/src/main/java/com/google/devtools/build/lib/remote/GrpcActionCache.java#L245
 		return &build_remote.CasLookupReply{
 			Status: &build_remote.CasStatus{
-				Succeeded: false,
-				Error: build_remote.CasStatus_MISSING_DIGEST,
+				Succeeded:     false,
+				Error:         build_remote.CasStatus_MISSING_DIGEST,
 				MissingDigest: missing,
 			},
 		}, nil
@@ -62,13 +65,12 @@ func (*local) UploadTreeMetadata(context.Context, *build_remote.CasUploadTreeMet
 	return nil, grpc.Errorf(codes.Unimplemented, "tree processing is not implemented yet")
 }
 
-
 func (*local) DownloadTreeMetadata(context.Context, *build_remote.CasDownloadTreeMetadataRequest) (*build_remote.CasDownloadTreeMetadataReply, error) {
 	return nil, grpc.Errorf(codes.Unimplemented, "tree processing is not implemented yet")
 }
 
 func (*local) DownloadTree(*build_remote.CasDownloadTreeRequest, build_remote.CasService_DownloadTreeServer) error {
-	return  grpc.Errorf(codes.Unimplemented, "tree processing is not implemented yet")
+	return grpc.Errorf(codes.Unimplemented, "tree processing is not implemented yet")
 }
 
 func (s *local) UploadBlob(stream build_remote.CasService_UploadBlobServer) error {
@@ -77,7 +79,7 @@ func (s *local) UploadBlob(stream build_remote.CasService_UploadBlobServer) erro
 	for {
 		reqFrame, err := stream.Recv()
 		if err == io.EOF {
-			continue
+			break
 		} else if err != nil {
 			return grpc.Errorf(codes.Unknown, "can't read from stream: %v", err)
 		}
@@ -126,8 +128,7 @@ func (s *local) DownloadBlob(req *build_remote.CasDownloadBlobRequest, stream bu
 		resp := &build_remote.CasDownloadReply{}
 		reader, err := s.store.Read(stream.Context(), blobDigest)
 		if err != nil {
-			resp.Status = statusFromError(err)
-			resp.Status.MissingDigest = append(resp.Status.MissingDigest, blobDigest)
+			resp.Status = benignStatusFor(blobDigest, err)
 			if err := stream.Send(resp); err != nil {
 				return grpc.Errorf(codes.Unknown, "can't write to stream: %v", err)
 			}
@@ -148,11 +149,9 @@ func (s *local) DownloadBlob(req *build_remote.CasDownloadBlobRequest, stream bu
 			resp = &build_remote.CasDownloadReply{}
 			// TODO(mwitkow): This allocates a lot, try moving it to the top.
 			chunkBuffer := make([]byte, *chunkSizeBytes)
-			n, err := reader.Read(chunkBuffer)
-			if err == io.EOF || n == 0 {
-				break
-			} else if err != nil {
-				resp.Status = statusFromError(err)
+			n, readErr := reader.Read(chunkBuffer)
+			if readErr != nil && readErr != io.EOF {
+				resp.Status = benignStatusFor(blobDigest, fmt.Errorf("can't read from blobstore: %v", readErr))
 				if err := stream.Send(resp); err != nil {
 					return grpc.Errorf(codes.Unknown, "can't write to stream: %v", err)
 				}
@@ -160,15 +159,17 @@ func (s *local) DownloadBlob(req *build_remote.CasDownloadBlobRequest, stream bu
 			}
 			resp.Data = &build_remote.BlobChunk{
 				Offset: offset,
-				Data: chunkBuffer[:n],
+				Data:   chunkBuffer[:n],
 			}
 			offset += int64(n)
 			if err := stream.Send(resp); err != nil {
 				return grpc.Errorf(codes.Unknown, "can't write to stream: %v", err)
+			}
+			if readErr == io.EOF {
+				break
 			}
 		}
 		reader.Close()
 	}
 	return nil
 }
-

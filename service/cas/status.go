@@ -29,11 +29,14 @@ func statusFromError(err error) *build_remote.CasStatus {
 
 }
 
-// remappedStatusOrError attempts to move the error to a benign form of CasStatus.
-// The bazel implementation immediately the whole execution on any gRPC errors.
-func remappedStatusOrError(err error) (*build_remote.CasStatus, error) {
-	if grpc.Code(err) == codes.NotFound {
-		return statusFromError(err), nil
+// benignStatusFor returns a CasStatus that is *benign* to the execution of a stream.
+// The download/upload process fails with a RuntimeException, killing bazel:
+// https://github.com/bazelbuild/bazel/blob/1575652972d80f224fb3f7398eef3439e4f5a5dd/src/main/java/com/google/devtools/build/lib/remote/GrpcActionCache.java#L295
+func benignStatusFor(digest *build_remote.ContentDigest, err error) *build_remote.CasStatus {
+	return &build_remote.CasStatus{
+		Succeeded:     false,
+		MissingDigest: []*build_remote.ContentDigest{digest},
+		Error:         build_remote.CasStatus_MISSING_DIGEST,
+		ErrorDetail:   err.Error(),
 	}
-	return nil, err
 }

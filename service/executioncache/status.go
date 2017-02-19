@@ -19,7 +19,7 @@ func statusFromError(err error) *build_remote.ExecutionCacheStatus {
 		return status
 	}
 	status.ErrorDetail = grpc.ErrorDesc(err)
-	switch (grpc.Code(err)) {
+	switch grpc.Code(err) {
 	case codes.NotFound:
 		status.Error = build_remote.ExecutionCacheStatus_MISSING_RESULT
 	default:

@@ -1,11 +1,11 @@
 package action
 
 import (
-	"github.com/mwitkow/bazel-distcache/proto/build/remote"
-	"sync"
 	"github.com/mwitkow/bazel-distcache/common/util"
+	"github.com/mwitkow/bazel-distcache/proto/build/remote"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"sync"
 )
 
 // NewInMemory constructs *very* naive storage of ActionResults.
@@ -15,7 +15,7 @@ func NewInMemory() Store {
 }
 
 type inMemory struct {
-	mu sync.RWMutex
+	mu     sync.RWMutex
 	values map[string]*build_remote.ActionResult
 }
 
@@ -37,4 +37,3 @@ func (s *inMemory) Store(actionDigest *build_remote.ContentDigest, actionResult 
 	s.mu.Unlock()
 	return nil
 }
-

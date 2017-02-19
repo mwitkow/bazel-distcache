@@ -1,18 +1,18 @@
 package blob
 
 import (
-	"github.com/mwitkow/bazel-distcache/proto/build/remote"
+	"fmt"
+	"io/ioutil"
+	"os"
+	"path"
 	"sync"
+
+	"github.com/mwitkow/bazel-distcache/common/sharedflags"
 	"github.com/mwitkow/bazel-distcache/common/util"
+	"github.com/mwitkow/bazel-distcache/proto/build/remote"
+	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"github.com/mwitkow/bazel-distcache/common/sharedflags"
-	"os"
-	"fmt"
-	"golang.org/x/net/context"
-	"io/ioutil"
-	"path"
-	"io"
 )
 
 const (
@@ -105,11 +105,16 @@ func (s *onDisk) Write(ctx context.Context, blobDigest *build_remote.ContentDige
 // depends on the particular mode of the file open underneath
 type blobFile struct {
 	digest *build_remote.ContentDigest
-	file *os.File
+	file   *os.File
 }
 
 func (b *blobFile) Read(p []byte) (n int, err error) {
-	return io.ReadFull(b.file, p)
+	for n < len(p) && err == nil {
+		var nn int
+		nn, err = b.file.Read(p[n:])
+		n += nn
+	}
+	return
 }
 
 func (b *blobFile) Write(p []byte) (n int, err error) {

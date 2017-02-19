@@ -2,13 +2,12 @@ package executioncache
 
 import (
 	"github.com/mwitkow/bazel-distcache/proto/build/remote"
-	"golang.org/x/net/context"
 	"github.com/mwitkow/bazel-distcache/stores/action"
-	"google.golang.org/grpc/codes"
+	"golang.org/x/net/context"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 
 	log "github.com/Sirupsen/logrus"
-
 )
 
 // NewLocal builds the ExecutionCache gRPC service for local daemon.
@@ -20,7 +19,7 @@ type local struct {
 	store action.Store
 }
 
-func (s*local) GetCachedResult(ctx context.Context, req *build_remote.ExecutionCacheRequest) (*build_remote.ExecutionCacheReply, error) {
+func (s *local) GetCachedResult(ctx context.Context, req *build_remote.ExecutionCacheRequest) (*build_remote.ExecutionCacheReply, error) {
 	log.WithField("service", "execcache").Infof("Hit GetCachedResult")
 	if req.GetActionDigest() == nil {
 		return nil, grpc.Errorf(codes.InvalidArgument, "action result must be set")
@@ -32,7 +31,7 @@ func (s*local) GetCachedResult(ctx context.Context, req *build_remote.ExecutionC
 	return &build_remote.ExecutionCacheReply{Status: statusSuccess, Result: actionResult}, nil
 }
 
-func (s*local) SetCachedResult(ctx context.Context, req *build_remote.ExecutionCacheSetRequest) (*build_remote.ExecutionCacheSetReply, error) {
+func (s *local) SetCachedResult(ctx context.Context, req *build_remote.ExecutionCacheSetRequest) (*build_remote.ExecutionCacheSetReply, error) {
 	log.WithField("service", "execcache").Infof("Hit SetCachedResult")
 	if req.GetActionDigest() == nil || req.GetResult() == nil {
 		return nil, grpc.Errorf(codes.InvalidArgument, "action result and its digest must be set")
@@ -43,6 +42,3 @@ func (s*local) SetCachedResult(ctx context.Context, req *build_remote.ExecutionC
 	}
 	return &build_remote.ExecutionCacheSetReply{Status: statusSuccess}, nil
 }
-
-
-

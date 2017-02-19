@@ -1,11 +1,10 @@
 package blob
 
 import (
-	"golang.org/x/net/context"
 	"github.com/mwitkow/bazel-distcache/proto/build/remote"
+	"golang.org/x/net/context"
 	"io"
 )
-
 
 // Store is a general interface for storing ActionResults.
 // ActionResults are descriptions of bazel build actions (steps), with a set of outputs (held in content store),
