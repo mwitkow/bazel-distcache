@@ -24,7 +24,9 @@ C++, Go, Python, protobuf, Scala... you name it.
 
 This is **pre-alpha**, basically a `localcache` proof of concept. It works, and `bazel` happily uses it as a cache.
 
-## Usage: `localcache`
+## Usage:
+
+#### `localcache`
 
 To build:
 
@@ -41,8 +43,6 @@ for bazel is `localhost:10101`. You can use it for example:
 ```
 bazel --host_jvm_args=-Dbazel.DigestFunction=SHA1 build  --spawn_strategy=remote --remote_cache=localhost:10101 ...
 ```
-
-Some enterprises have fairly restrictive networking environments. They typically operate [HTTP forward proxies](https://en.wikipedia.org/wiki/Proxy_server) that require user authentication. These proxies usually allow  HTTPS (TCP to `:443`) to pass through the proxy using the [`CONNECT`](https://tools.ietf.org/html/rfc2616#section-9.9) method. The `CONNECT` method is basically a HTTP-negotiated "end-to-end" TCP stream... which is exactly what [`net.Conn`](https://golang.org/pkg/net/#Conn) is :)
 
 ## Hacking Tips
 
