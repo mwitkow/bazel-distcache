@@ -8,7 +8,7 @@ import (
 	"sync"
 )
 
-// NewInMemory constructs *very* naive storage of ActionResults.
+// NewOnDisk constructs *very* naive storage of ActionResults.
 // No persistence, no expiration, just a lot of YOLO.
 func NewInMemory() Store {
 	return &inMemory{values: make(map[string]*build_remote.ActionResult)}

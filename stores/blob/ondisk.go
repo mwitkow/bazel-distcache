@@ -20,7 +20,7 @@ const (
 )
 
 var (
-	diskPath = sharedflags.Set.String("blobstore_ondisk_path", "/tmp/localcache-blobstore", "Path for the ondisk blob store directory.")
+	diskPath = sharedflags.Set.String("blobstore_ondisk_path", "/tmp/localcache-blobstore", "Path for the ondisk actio store directory.")
 )
 
 // NewOnDisk constructs *very* naive storage of Blobs that is stored in a directory from flags.

@@ -12,6 +12,7 @@ import (
 	"google.golang.org/grpc/codes"
 
 	"github.com/mwitkow/bazel-distcache/proto/build/remote"
+	"github.com/mwitkow/bazel-distcache/common/util"
 )
 
 var (
@@ -34,7 +35,7 @@ type local struct {
 }
 
 func (s *local) Lookup(ctx context.Context, req *build_remote.CasLookupRequest) (*build_remote.CasLookupReply, error) {
-	log.WithField("service", "cas").Infof("Hit Lookup")
+	logger := log.WithField("service", "cas").WithField("method", "Lookup")
 	missing := []*build_remote.ContentDigest{}
 	for _, digest := range req.GetDigest() {
 		exists, err := s.store.Exists(ctx, digest)
@@ -46,8 +47,10 @@ func (s *local) Lookup(ctx context.Context, req *build_remote.CasLookupRequest) 
 		}
 	}
 	if len(missing) == 0 {
+		logger.Infof("hit all of %d", len(req.Digest))
 		return &build_remote.CasLookupReply{Status: statusSuccess}, nil
 	} else {
+		logger.Infof("missing %d of %d", len(missing), len(req.Digest))
 		// it doesn't really matter, even if something is missing we return an error.
 		// see https://github.com/bazelbuild/bazel/blob/1575652972d80f224fb3f7398eef3439e4f5a5dd/src/main/java/com/google/devtools/build/lib/remote/GrpcActionCache.java#L245
 		return &build_remote.CasLookupReply{
@@ -74,8 +77,9 @@ func (*local) DownloadTree(*build_remote.CasDownloadTreeRequest, build_remote.Ca
 }
 
 func (s *local) UploadBlob(stream build_remote.CasService_UploadBlobServer) error {
-	log.WithField("service", "cas").Infof("Hit UploadBlob")
+	logger := log.WithField("service", "cas").WithField("method", "UploadBlob")
 	var currentBlob blob.Writer
+	count := 0
 	for {
 		reqFrame, err := stream.Recv()
 		if err == io.EOF {
@@ -103,6 +107,7 @@ func (s *local) UploadBlob(stream build_remote.CasService_UploadBlobServer) erro
 			if err != nil {
 				return grpc.Errorf(codes.Internal, "failed opening blob: %v", err)
 			}
+			count += 1
 		}
 		wrote, err := currentBlob.Write(chunk.Data)
 		if err != nil {
@@ -115,13 +120,13 @@ func (s *local) UploadBlob(stream build_remote.CasService_UploadBlobServer) erro
 	if currentBlob != nil {
 		currentBlob.Close()
 	}
+	logger.Infof("upload stored %d", count)
 	stream.SendAndClose(&build_remote.CasUploadBlobReply{Status: statusSuccess})
 	return nil
 }
 
 func (s *local) DownloadBlob(req *build_remote.CasDownloadBlobRequest, stream build_remote.CasService_DownloadBlobServer) error {
-	log.WithField("service", "cas").Infof("Hit DownloadBlob")
-
+	logger := log.WithField("service", "cas").WithField("method", "DownloadBlob")
 	// Base on https://github.com/bazelbuild/bazel/blob/1575652972d80f224fb3f7398eef3439e4f5a5dd/src/main/java/com/google/devtools/build/lib/remote/GrpcActionCache.java#L313
 	// It is clear that we *need* to send the chunks down in *exactly* the same order we got them in.
 	for _, blobDigest := range req.GetDigest() {
@@ -129,6 +134,7 @@ func (s *local) DownloadBlob(req *build_remote.CasDownloadBlobRequest, stream bu
 		reader, err := s.store.Read(stream.Context(), blobDigest)
 		if err != nil {
 			resp.Status = benignStatusFor(blobDigest, err)
+			logger.Warnf("%v miss on OPEN: %v", util.ContentDigestToBase64(blobDigest), err)
 			if err := stream.Send(resp); err != nil {
 				return grpc.Errorf(codes.Unknown, "can't write to stream: %v", err)
 			}
@@ -152,6 +158,7 @@ func (s *local) DownloadBlob(req *build_remote.CasDownloadBlobRequest, stream bu
 			n, readErr := reader.Read(chunkBuffer)
 			if readErr != nil && readErr != io.EOF {
 				resp.Status = benignStatusFor(blobDigest, fmt.Errorf("can't read from blobstore: %v", readErr))
+				logger.Warnf("%v err on read: %v", util.ContentDigestToBase64(blobDigest), err)
 				if err := stream.Send(resp); err != nil {
 					return grpc.Errorf(codes.Unknown, "can't write to stream: %v", err)
 				}
@@ -171,5 +178,6 @@ func (s *local) DownloadBlob(req *build_remote.CasDownloadBlobRequest, stream bu
 		}
 		reader.Close()
 	}
+	logger.Infof("download fetched %d", len(req.GetDigest()))
 	return nil
 }
