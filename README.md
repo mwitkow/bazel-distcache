@@ -11,7 +11,7 @@ A distributed build cache for [Bazel](https://bazel.build/) declarative build sy
 Bazel is a great tool for having reproducible builds. However, if you run a large CI/CD pipeline using it, you end up
 rebuilding many artifacts over and over across different agents (or containers).
 
-Bazel has **experimental** support for gRPC-based [remote workers/caches](https://github.com/bazelbuild/bazel/tree/1575652972d80f224fb3f7398eef3439e4f5a5dd/src/main/java/com/google/devtools/build/lib/remote).
+Bazel > 0.5.3 has **alpha** support for the future Google Remote Execution API (protobuf [here](https://github.com/googleapis/googleapis/blob/master/google/devtools/remoteexecution/v1test/remote_execution.proto)*[]:
 
 The goal of the project is to leverage it and build:
  * `localcache` - local daemon that `bazel` talks to, providing low latency-first caching layer
@@ -36,22 +36,19 @@ go install github.com/mwitkow/bazel-distcache/cmd/localcache
 
 To start:
 ```
-bin/localcache --blobstore_ondisk_path=/tmp/localcache-blobstore
+bin/localcache --blobstore_ondisk_path=/tmp/localcache/blobstore --actionstore_ondisk_path=/tmp/localcache/actionstore
 ```
 At this point an HTTP debug interface (including metrics) is running on http://localhost:10100. The default gRPC address
 for bazel is `localhost:10101`. You can use it for example:
 ```
-bazel --host_jvm_args=-Dbazel.DigestFunction=SHA1 build  --spawn_strategy=remote --remote_cache=localhost:10101 ...
+bazel --host_jvm_args=-Dbazel.DigestFunction=SHA1 build  --strategy=Javac=remote --strategy=Closure=remote --spawn_strategy=remote --remote_cache=localhost:10101 ...
 ```
 
 ## Hacking Tips
 
  * you can enable gRPC tracing on https://localhost:10100/debug/requests with `--grpc_tracing_enabled` for easier debugging
- *
- * [`remote_protocol.proto`](https://github.com/bazelbuild/bazel/blob/master/src/main/protobuf/remote_protocol.proto) contains the protocol
- * [`GrpcActionCache.java`](https://github.com/bazelbuild/bazel/blob/master/src/main/java/com/google/devtools/build/lib/remote/GrpcActionCache.java) is the Bazel-side of the protocol, with some interesting assumptions
- * [`RemoteOptions.java`](https://github.com/bazelbuild/bazel/blob/master/src/main/java/com/google/devtools/build/lib/remote/RemoteOptions.java) contains the CLI parameters for caching in Bazel
- * if you want to rebuild protos, use `proto/protogen.sh`
+ * this uses the compiled out `google.golang.org/genproto/googleapis` Go protobufs
+
 
 
 

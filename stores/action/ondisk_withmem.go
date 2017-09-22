@@ -1,18 +1,18 @@
 package action
 
 import (
-	"github.com/mwitkow/bazel-distcache/common/sharedflags"
-	"github.com/mwitkow/bazel-distcache/common/util"
-	"github.com/mwitkow/bazel-distcache/proto/build/remote"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"sync"
 	"fmt"
 	"io/ioutil"
-	"path"
 	"os"
+	"path"
+	"sync"
+
 	"github.com/golang/protobuf/proto"
+	"github.com/mwitkow/bazel-distcache/common/sharedflags"
+	"github.com/mwitkow/bazel-distcache/common/util"
 	"google.golang.org/genproto/googleapis/devtools/remoteexecution/v1test"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 )
 
 var (

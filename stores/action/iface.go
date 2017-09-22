@@ -4,7 +4,6 @@ import (
 	"google.golang.org/genproto/googleapis/devtools/remoteexecution/v1test"
 )
 
-
 // Store is a general interface for caching ActionResults.
 // ActionResults are descriptions of bazel build actions (steps), with a set of outputs (held in content store),
 // the exit code and stdout/stderr results (also held in content store).

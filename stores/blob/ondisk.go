@@ -9,11 +9,10 @@ import (
 
 	"github.com/mwitkow/bazel-distcache/common/sharedflags"
 	"github.com/mwitkow/bazel-distcache/common/util"
-	"github.com/mwitkow/bazel-distcache/proto/build/remote"
 	"golang.org/x/net/context"
+	"google.golang.org/genproto/googleapis/devtools/remoteexecution/v1test"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/genproto/googleapis/devtools/remoteexecution/v1test"
 )
 
 const (

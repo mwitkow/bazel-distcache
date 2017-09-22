@@ -2,17 +2,27 @@ package actioncache
 
 import (
 	"github.com/mwitkow/bazel-distcache/stores/action"
+	"github.com/sirupsen/logrus"
 	"golang.org/x/net/context"
 	"google.golang.org/genproto/googleapis/devtools/remoteexecution/v1test"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 )
 
+// NewLocal builds the CaS gRPC service for local daemon.
+func NewLocal() remoteexecution.ActionCacheServer {
+	store, err := action.NewOnDisk()
+	if err != nil {
+		logrus.Fatalf("could not initialise CaSService: %v", err)
+	}
+	return &local{store}
+}
+
 type local struct {
 	store action.Store
 }
 
-func (l *local) GetActionResult(ctx context.Context, req remoteexecution.GetActionResultRequest) (*remoteexecution.ActionResult, error) {
+func (l *local) GetActionResult(ctx context.Context, req *remoteexecution.GetActionResultRequest) (*remoteexecution.ActionResult, error) {
 	if req.GetActionDigest() == nil {
 		return nil, grpc.Errorf(codes.InvalidArgument, "action digest must be set")
 	}

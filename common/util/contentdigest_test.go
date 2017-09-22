@@ -2,34 +2,35 @@ package util
 
 import (
 	"testing"
-	"google.golang.org/genproto/googleapis/devtools/remoteexecution/v1test"
+
 	"github.com/stretchr/testify/assert"
+	"google.golang.org/genproto/googleapis/devtools/remoteexecution/v1test"
 )
 
 func TestResourcePathToContentDigest(t *testing.T) {
 	for _, tcase := range []struct {
-		input string
-		isErr bool
+		input  string
+		isErr  bool
 		output *remoteexecution.Digest
-	} {
+	}{
 		{
-			input: "with_instance/blobs/A0F4BBBB11114444/123456789",
+			input:  "with_instance/blobs/A0F4BBBB11114444/123456789",
 			output: &remoteexecution.Digest{Hash: "A0F4BBBB11114444", SizeBytes: 123456789},
 		},
 		{
-			input: "with_instance/uploads/blobs/A0F4BBBB11114444/123456789",
+			input:  "with_instance/uploads/blobs/A0F4BBBB11114444/123456789",
 			output: &remoteexecution.Digest{Hash: "A0F4BBBB11114444", SizeBytes: 123456789},
 		},
 		{
-			input: "with_instance/uploads/blobs/A0F4BBBB11114444/123456789/mydir/myfile.zip",
+			input:  "with_instance/uploads/blobs/A0F4BBBB11114444/123456789/mydir/myfile.zip",
 			output: &remoteexecution.Digest{Hash: "A0F4BBBB11114444", SizeBytes: 123456789},
 		},
 		{
-			input: "uploads/blobs/A0F4BBBB11114444/123456789/mydir/myfile.zip",
+			input:  "uploads/blobs/A0F4BBBB11114444/123456789/mydir/myfile.zip",
 			output: &remoteexecution.Digest{Hash: "A0F4BBBB11114444", SizeBytes: 123456789},
 		},
 		{
-			input: "blobs/A0F4BBBB11114444/123456789",
+			input:  "blobs/A0F4BBBB11114444/123456789",
 			output: &remoteexecution.Digest{Hash: "A0F4BBBB11114444", SizeBytes: 123456789},
 		},
 		{
@@ -53,4 +54,3 @@ func TestResourcePathToContentDigest(t *testing.T) {
 		})
 	}
 }
-

@@ -1,19 +1,20 @@
 package cas
 
 import (
-	"fmt"
 	"io"
 
-	log "github.com/Sirupsen/logrus"
 	"github.com/mwitkow/bazel-distcache/common/sharedflags"
 	"github.com/mwitkow/bazel-distcache/stores/blob"
+	log "github.com/sirupsen/logrus"
 	"golang.org/x/net/context"
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 
+	"io/ioutil"
+
 	"github.com/mwitkow/bazel-distcache/common/util"
-	"google.golang.org/genproto/googleapis/devtools/remoteexecution/v1test"
 	"google.golang.org/genproto/googleapis/bytestream"
+	"google.golang.org/genproto/googleapis/devtools/remoteexecution/v1test"
+	"google.golang.org/grpc/status"
 )
 
 var (
@@ -22,8 +23,14 @@ var (
 		"Size of chunk streamed down to bazel clients. Can be max 4MB due to gRPC limits.")
 )
 
+// ConcreteCasServer is a combined implementation of the ByteStreamServer and the ContentAddressableStorageServer.
+type ConcreteCaSServer interface {
+	remoteexecution.ContentAddressableStorageServer
+	bytestream.ByteStreamServer
+}
+
 // NewLocal builds the CaS gRPC service for local daemon.
-func NewLocal() remoteexecution.ContentAddressableStorageServer {
+func NewLocal() ConcreteCaSServer {
 	store, err := blob.NewOnDisk()
 	if err != nil {
 		log.Fatalf("could not initialise CaSService: %v", err)
@@ -36,162 +43,120 @@ type local struct {
 	store blob.Store
 }
 
-func (l *local) Read(*bytestream.ReadRequest, bytestream.ByteStream_ReadServer) error {
-	panic("implement me")
+func (l *local) FindMissingBlobs(ctx context.Context, req *remoteexecution.FindMissingBlobsRequest) (*remoteexecution.FindMissingBlobsResponse, error) {
+	// TODO(mwitkow): Handle instance name of the request resourceName
+	resp := &remoteexecution.FindMissingBlobsResponse{}
+	for _, blobDigest := range req.BlobDigests {
+		exists, err := l.store.Exists(ctx, blobDigest)
+		if err != nil {
+			return nil, err
+		}
+		if !exists {
+			resp.MissingBlobDigests = append(resp.MissingBlobDigests, blobDigest)
+		}
+	}
+	return resp, nil
 }
 
-func (l *local) Write(bytestream.ByteStream_WriteServer) error {
-	panic("implement me")
+func (l *local) BatchUpdateBlobs(context.Context, *remoteexecution.BatchUpdateBlobsRequest) (*remoteexecution.BatchUpdateBlobsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "BatchUpdateBlobs is not used in bazel 0.5.3, ignore for now.")
+}
+
+func (l *local) GetTree(context.Context, *remoteexecution.GetTreeRequest) (*remoteexecution.GetTreeResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "GetTree is deprecated and unused in bazel >= 0.5.3.")
+}
+
+func (l *local) Read(req *bytestream.ReadRequest, readStream bytestream.ByteStream_ReadServer) error {
+	// TODO(mwitkow): Handle instance name of the request resourceName
+	blobDigest, err := util.ResourcePathToContentDigest(req.ResourceName)
+	if err != nil {
+		return err
+	}
+	blobReader, err := l.store.Read(readStream.Context(), blobDigest)
+	if err != nil {
+		// Store returns gRPC error codes, including not found.
+		return err
+	}
+	defer blobReader.Close()
+	if req.ReadOffset > blobReader.Digest().SizeBytes {
+		return status.Errorf(codes.OutOfRange, "read offset larger than blob size")
+	}
+	if req.ReadOffset > 0 {
+		if _, err := io.CopyN(ioutil.Discard, blobReader, req.ReadOffset); err != nil {
+			return status.Errorf(codes.Internal, "failed seeking to offset")
+		}
+	}
+	for {
+		// TODO(mwitkow): This allocates a lot, try moving it to the top.
+		chunkBuffer := make([]byte, *chunkSizeBytes)
+		n, readErr := blobReader.Read(chunkBuffer)
+		if readErr != nil && readErr != io.EOF {
+			if statusErr, ok := status.FromError(readErr); ok {
+				return statusErr.Err()
+			} else {
+				return status.Errorf(codes.DataLoss, "cannot read this file %v", readErr)
+			}
+		}
+		if n > 0 {
+			if err := readStream.Send(&bytestream.ReadResponse{Data: chunkBuffer[:n]}); err != nil {
+				return err
+			}
+		}
+		if readErr == io.EOF {
+			break
+		}
+	}
+	return nil
+}
+
+func (l *local) Write(writeStream bytestream.ByteStream_WriteServer) error {
+	firstMsg, err := writeStream.Recv()
+	if err != nil {
+		return err
+	}
+	// TODO(mwitkow): Handle instance name of the request resourceName
+	blobDigest, err := util.ResourcePathToContentDigest(firstMsg.ResourceName)
+	if err != nil {
+		return err
+	}
+	if firstMsg.WriteOffset > 0 {
+		// TODO(mwitkow): Implement this write resumption. According to the docs, returning NotFound should be safe.
+		return status.Errorf(codes.Unimplemented, "write resumption hasn't been implemented")
+	}
+	blobWriter, err := l.store.Write(writeStream.Context(), blobDigest)
+	defer blobWriter.Close()
+	writeChunk := firstMsg
+	for true {
+		if len(writeChunk.Data) > 0 {
+			n, writeErr := blobWriter.Write(writeChunk.Data)
+			if n != len(writeChunk.Data) {
+				return status.Errorf(codes.Internal, "bad writer implementation, wrote partially %d of %d", n, len(writeChunk.Data))
+			}
+			if writeErr != nil {
+				if statusErr, ok := status.FromError(writeErr); ok {
+					return statusErr.Err()
+				} else {
+					return status.Errorf(codes.DataLoss, "cannot read this file %v", writeErr)
+				}
+			}
+		}
+		if writeChunk.FinishWrite == true {
+			break
+		}
+		var err error
+		writeChunk, err = writeStream.Recv()
+		if err != nil {
+			if err == io.EOF {
+				return status.Errorf(codes.Unimplemented, "received an EOF without FinishWrite, resumption is not supported")
+			} else {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func (l *local) QueryWriteStatus(context.Context, *bytestream.QueryWriteStatusRequest) (*bytestream.QueryWriteStatusResponse, error) {
-	panic("implement me")
-}
-
-func (s *local) Lookup(ctx context.Context, req *build_remote.CasLookupRequest) (*build_remote.CasLookupReply, error) {
-	logger := log.WithField("service", "cas").WithField("method", "Lookup")
-	missing := []*build_remote.ContentDigest{}
-	for _, digest := range req.GetDigest() {
-		exists, err := s.store.Exists(ctx, digest)
-		if err != nil {
-			return &build_remote.CasLookupReply{Status: statusFromError(err)}, nil
-		}
-		if !exists {
-			missing = append(missing, digest)
-		}
-	}
-	if len(missing) == 0 {
-		logger.Infof("hit all of %d", len(req.Digest))
-		return &build_remote.CasLookupReply{Status: statusSuccess}, nil
-	} else {
-		logger.Infof("missing %d of %d", len(missing), len(req.Digest))
-		// it doesn't really matter, even if something is missing we return an error.
-		// see https://github.com/bazelbuild/bazel/blob/1575652972d80f224fb3f7398eef3439e4f5a5dd/src/main/java/com/google/devtools/build/lib/remote/GrpcActionCache.java#L245
-		return &build_remote.CasLookupReply{
-			Status: &build_remote.CasStatus{
-				Succeeded:     false,
-				Error:         build_remote.CasStatus_MISSING_DIGEST,
-				MissingDigest: missing,
-			},
-		}, nil
-	}
-
-}
-
-func (*local) UploadTreeMetadata(context.Context, *build_remote.CasUploadTreeMetadataRequest) (*build_remote.CasUploadTreeMetadataReply, error) {
-	return nil, grpc.Errorf(codes.Unimplemented, "tree processing is not implemented yet")
-}
-
-func (*local) DownloadTreeMetadata(context.Context, *build_remote.CasDownloadTreeMetadataRequest) (*build_remote.CasDownloadTreeMetadataReply, error) {
-	return nil, grpc.Errorf(codes.Unimplemented, "tree processing is not implemented yet")
-}
-
-func (*local) DownloadTree(*build_remote.CasDownloadTreeRequest, build_remote.CasService_DownloadTreeServer) error {
-	return grpc.Errorf(codes.Unimplemented, "tree processing is not implemented yet")
-}
-
-func (s *local) UploadBlob(stream build_remote.CasService_UploadBlobServer) error {
-	logger := log.WithField("service", "cas").WithField("method", "UploadBlob")
-	var currentBlob blob.Writer
-	count := 0
-	for {
-		reqFrame, err := stream.Recv()
-		if err == io.EOF {
-			break
-		} else if err != nil {
-			return grpc.Errorf(codes.Unknown, "can't read from stream: %v", err)
-		}
-		chunk := reqFrame.GetData()
-		if chunk == nil {
-			return grpc.Errorf(codes.InvalidArgument, "upload blob request must have chunk field")
-		}
-		if chunk.Offset == 0 && chunk.GetDigest() == nil {
-			return grpc.Errorf(codes.InvalidArgument, "upload blob chunk with offset 0 and no digest info")
-		}
-		if chunk.Offset != 0 && currentBlob == nil {
-			return grpc.Errorf(codes.InvalidArgument, "upload blob chunk with non zero offset and no prior blob")
-		}
-		// Start of first chunk of a blob.
-		if chunk.Offset == 0 {
-			if currentBlob != nil {
-				// Make sure we close the previous blob, and flush stuff etc.
-				currentBlob.Close()
-			}
-			currentBlob, err = s.store.Write(stream.Context(), chunk.GetDigest())
-			if err != nil {
-				return grpc.Errorf(codes.Internal, "failed opening blob: %v", err)
-			}
-			count += 1
-		}
-		wrote, err := currentBlob.Write(chunk.Data)
-		if err != nil {
-			return grpc.Errorf(codes.Internal, "failed writing blob: %v", err)
-		}
-		if wrote != len(chunk.Data) {
-			return grpc.Errorf(codes.Internal, "bad writer implementation, wrote partially %d of %d", wrote, len(chunk.Data))
-		}
-	}
-	if currentBlob != nil {
-		currentBlob.Close()
-	}
-	logger.Infof("upload stored %d", count)
-	stream.SendAndClose(&build_remote.CasUploadBlobReply{Status: statusSuccess})
-	return nil
-}
-
-func (s *local) DownloadBlob(req *build_remote.CasDownloadBlobRequest, stream build_remote.CasService_DownloadBlobServer) error {
-	logger := log.WithField("service", "cas").WithField("method", "DownloadBlob")
-	// Base on https://github.com/bazelbuild/bazel/blob/1575652972d80f224fb3f7398eef3439e4f5a5dd/src/main/java/com/google/devtools/build/lib/remote/GrpcActionCache.java#L313
-	// It is clear that we *need* to send the chunks down in *exactly* the same order we got them in.
-	for _, blobDigest := range req.GetDigest() {
-		resp := &build_remote.CasDownloadReply{}
-		reader, err := s.store.Read(stream.Context(), blobDigest)
-		if err != nil {
-			resp.Status = benignStatusFor(blobDigest, err)
-			logger.Warnf("%v miss on OPEN: %v", util.ContentDigestToBase64(blobDigest), err)
-			if err := stream.Send(resp); err != nil {
-				return grpc.Errorf(codes.Unknown, "can't write to stream: %v", err)
-			}
-			continue
-		}
-		resp.Data = &build_remote.BlobChunk{
-			Digest: reader.Digest(), // NOTE: this one contains length!
-			Offset: 0,
-		}
-		// Flush a response frame with just the digest, and continue flushing just the Data contents in subsequent ones.
-		// This initial frame *could* hold data as well, but it would make it harder to implement, and I'm lazy.
-		// See https://github.com/bazelbuild/bazel/blob/1575652972d80f224fb3f7398eef3439e4f5a5dd/src/main/java/com/google/devtools/build/lib/remote/GrpcActionCache.java#L338
-		if err := stream.Send(resp); err != nil {
-			return grpc.Errorf(codes.Unknown, "can't write to stream: %v", err)
-		}
-		offset := int64(0)
-		for {
-			resp = &build_remote.CasDownloadReply{}
-			// TODO(mwitkow): This allocates a lot, try moving it to the top.
-			chunkBuffer := make([]byte, *chunkSizeBytes)
-			n, readErr := reader.Read(chunkBuffer)
-			if readErr != nil && readErr != io.EOF {
-				resp.Status = benignStatusFor(blobDigest, fmt.Errorf("can't read from blobstore: %v", readErr))
-				logger.Warnf("%v err on read: %v", util.ContentDigestToBase64(blobDigest), err)
-				if err := stream.Send(resp); err != nil {
-					return grpc.Errorf(codes.Unknown, "can't write to stream: %v", err)
-				}
-				break
-			}
-			resp.Data = &build_remote.BlobChunk{
-				Offset: offset,
-				Data:   chunkBuffer[:n],
-			}
-			offset += int64(n)
-			if err := stream.Send(resp); err != nil {
-				return grpc.Errorf(codes.Unknown, "can't write to stream: %v", err)
-			}
-			if readErr == io.EOF {
-				break
-			}
-		}
-		reader.Close()
-	}
-	logger.Infof("download fetched %d", len(req.GetDigest()))
-	return nil
+	// TODO(mwitkow): Implement this write resumption. According to the docs, returning NotFound should be safe.
+	return nil, status.Errorf(codes.NotFound, "write resumption is not supported")
 }

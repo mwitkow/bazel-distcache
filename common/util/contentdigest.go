@@ -2,26 +2,24 @@ package util
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
+
 	"golang.org/x/net/context"
 	"golang.org/x/net/trace"
 	"google.golang.org/genproto/googleapis/devtools/remoteexecution/v1test"
-	"strings"
-	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/codes"
-	"strconv"
+	"google.golang.org/grpc/status"
 )
 
 const (
 	digestFilenameVersion = 1
-	blobsResourceField = "blobs/"
+	blobsResourceField    = "blobs/"
 )
-
 
 func ContentDigestToBase64(digest *remoteexecution.Digest) string {
 	return fmt.Sprintf("v%d_%s", digestFilenameVersion, digest.Hash)
 }
-
-
 
 // ResourceToContentDigest translates the bytestream resource name into a Digest object.
 //
@@ -33,7 +31,7 @@ func ResourcePathToContentDigest(resourceName string) (*remoteexecution.Digest, 
 	var err error
 	blobsOffset := strings.Index(resourceName, blobsResourceField)
 	if blobsOffset == -1 {
-		return nil, status.Errorf(codes.InvalidArgument, "bytestream resource must contain 'blobs/'");
+		return nil, status.Errorf(codes.InvalidArgument, "bytestream resource must contain 'blobs/'")
 	}
 
 	parts := strings.SplitN(resourceName[blobsOffset:], "/", 4)
@@ -42,7 +40,7 @@ func ResourcePathToContentDigest(resourceName string) (*remoteexecution.Digest, 
 	}
 	ret := &remoteexecution.Digest{}
 	ret.Hash = parts[1]
-	ret.SizeBytes, err  = strconv.ParseInt(parts[2], 10, 64)
+	ret.SizeBytes, err = strconv.ParseInt(parts[2], 10, 64)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "bytestream size can't be parsed: %v", err)
 	}

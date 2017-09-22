@@ -1,11 +1,12 @@
 package action
 
 import (
+	"sync"
+
 	"github.com/mwitkow/bazel-distcache/common/util"
 	"google.golang.org/genproto/googleapis/devtools/remoteexecution/v1test"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"sync"
 )
 
 // NewOnDisk constructs *very* naive storage of ActionResults.

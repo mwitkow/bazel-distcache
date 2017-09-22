@@ -1,9 +1,9 @@
 package blob
 
 import (
-	"github.com/mwitkow/bazel-distcache/proto/build/remote"
-	"golang.org/x/net/context"
 	"io"
+
+	"golang.org/x/net/context"
 	"google.golang.org/genproto/googleapis/devtools/remoteexecution/v1test"
 )
 

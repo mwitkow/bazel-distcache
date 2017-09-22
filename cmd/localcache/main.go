@@ -2,20 +2,23 @@ package main
 
 import (
 	"fmt"
-	log "github.com/Sirupsen/logrus"
-	"github.com/grpc-ecosystem/go-grpc-prometheus"
-	"github.com/mwitkow/bazel-distcache/common/sharedflags"
-	"github.com/mwitkow/bazel-distcache/proto/build/remote"
-	"github.com/mwitkow/bazel-distcache/service/cas"
-	"github.com/mwitkow/bazel-distcache/service/executioncache"
-	"github.com/prometheus/client_golang/prometheus"
-	_ "golang.org/x/net/trace" // registers /debug/requests
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/grpclog"
 	"net"
 	"net/http"
 	_ "net/http/pprof" //registers "/debug/pprof"
 	"os"
+
+	"github.com/grpc-ecosystem/go-grpc-middleware"
+	"github.com/grpc-ecosystem/go-grpc-middleware/logging/logrus"
+	"github.com/grpc-ecosystem/go-grpc-prometheus"
+	"github.com/mwitkow/bazel-distcache/common/sharedflags"
+	"github.com/mwitkow/bazel-distcache/service/actioncache"
+	"github.com/mwitkow/bazel-distcache/service/cas"
+	"github.com/prometheus/client_golang/prometheus"
+	logrus "github.com/sirupsen/logrus"
+	_ "golang.org/x/net/trace" // registers /debug/requests
+	"google.golang.org/genproto/googleapis/bytestream"
+	"google.golang.org/genproto/googleapis/devtools/remoteexecution/v1test"
+	"google.golang.org/grpc"
 )
 
 var (
@@ -25,29 +28,40 @@ var (
 )
 
 func main() {
-	log.SetOutput(os.Stdout)
-	log.SetLevel(log.InfoLevel)
+	logrus.SetOutput(os.Stdout)
+	logrus.SetLevel(logrus.InfoLevel)
 	if err := sharedflags.Set.Parse(os.Args); err != nil {
-		log.Fatalf("failed parsing flags: %v", err)
+		logrus.Fatalf("failed parsing flags: %v", err)
 	}
 
 	grpcListener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", *grpcPort))
 	if err != nil {
-		log.Fatalf("failed listening on 127.0.0.1:%d: %v", *grpcPort, err)
+		logrus.Fatalf("failed listening on 127.0.0.1:%d: %v", *grpcPort, err)
 	}
 	httpListener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", *httpPort))
 	if err != nil {
-		log.Fatalf("failed listening on 127.0.0.1:%d: %v", *httpPort, err)
+		logrus.Fatalf("failed listening on 127.0.0.1:%d: %v", *httpPort, err)
 	}
 
-	grpclog.SetLogger(log.StandardLogger())
+	logrusEntry := logrus.NewEntry(logrus.StandardLogger())
+	grpc_logrus.ReplaceGrpcLogger(logrusEntry)
 	grpcServer := grpc.NewServer(
-		grpc.StreamInterceptor(grpc_prometheus.StreamServerInterceptor),
-		grpc.UnaryInterceptor(grpc_prometheus.UnaryServerInterceptor),
+		grpc_middleware.WithUnaryServerChain(
+			grpc_prometheus.UnaryServerInterceptor,
+			grpc_logrus.UnaryServerInterceptor(logrusEntry),
+		),
+		grpc_middleware.WithStreamServerChain(
+			grpc_prometheus.StreamServerInterceptor,
+			grpc_logrus.StreamServerInterceptor(logrusEntry),
+		),
 	)
 	grpc.EnableTracing = *grpcTracingEnabled
-	build_remote.RegisterExecutionCacheServiceServer(grpcServer, executioncache.NewLocal())
-	build_remote.RegisterCasServiceServer(grpcServer, cas.NewLocal())
+
+	casInstance := cas.NewLocal()
+	remoteexecution.RegisterActionCacheServer(grpcServer, actioncache.NewLocal())
+	remoteexecution.RegisterContentAddressableStorageServer(grpcServer, casInstance)
+	bytestream.RegisterByteStreamServer(grpcServer, casInstance)
+
 	grpc_prometheus.Register(grpcServer)
 
 	http.Handle("/metrics", prometheus.UninstrumentedHandler())
@@ -60,12 +74,12 @@ func main() {
 	}))
 
 	go func() {
-		log.Infof("listening for HTTP (debug) on: http://%v", httpListener.Addr().String())
+		logrus.Infof("listening for HTTP (debug) on: http://%v", httpListener.Addr().String())
 		http.Serve(httpListener, http.DefaultServeMux)
 	}()
 
-	log.Infof("listening for gRPC (bazel) on: %v", grpcListener.Addr().String())
+	logrus.Infof("listening for gRPC (bazel) on: %v", grpcListener.Addr().String())
 	if err := grpcServer.Serve(grpcListener); err != nil {
-		log.Fatalf("failed staring gRPC server: %v", err)
+		logrus.Fatalf("failed staring gRPC server: %v", err)
 	}
 }
