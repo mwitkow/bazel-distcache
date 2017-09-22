@@ -11,8 +11,9 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 
-	"github.com/mwitkow/bazel-distcache/proto/build/remote"
 	"github.com/mwitkow/bazel-distcache/common/util"
+	"google.golang.org/genproto/googleapis/devtools/remoteexecution/v1test"
+	"google.golang.org/genproto/googleapis/bytestream"
 )
 
 var (
@@ -22,7 +23,7 @@ var (
 )
 
 // NewLocal builds the CaS gRPC service for local daemon.
-func NewLocal() build_remote.CasServiceServer {
+func NewLocal() remoteexecution.ContentAddressableStorageServer {
 	store, err := blob.NewOnDisk()
 	if err != nil {
 		log.Fatalf("could not initialise CaSService: %v", err)
@@ -30,8 +31,21 @@ func NewLocal() build_remote.CasServiceServer {
 	return &local{store}
 }
 
+// local implements both the ContentAddressableStorageService and the BlobStreamService
 type local struct {
 	store blob.Store
+}
+
+func (l *local) Read(*bytestream.ReadRequest, bytestream.ByteStream_ReadServer) error {
+	panic("implement me")
+}
+
+func (l *local) Write(bytestream.ByteStream_WriteServer) error {
+	panic("implement me")
+}
+
+func (l *local) QueryWriteStatus(context.Context, *bytestream.QueryWriteStatusRequest) (*bytestream.QueryWriteStatusResponse, error) {
+	panic("implement me")
 }
 
 func (s *local) Lookup(ctx context.Context, req *build_remote.CasLookupRequest) (*build_remote.CasLookupReply, error) {

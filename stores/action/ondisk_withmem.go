@@ -12,6 +12,7 @@ import (
 	"path"
 	"os"
 	"github.com/golang/protobuf/proto"
+	"google.golang.org/genproto/googleapis/devtools/remoteexecution/v1test"
 )
 
 var (
@@ -21,7 +22,7 @@ var (
 // NewOnDisk constructs *very* naive storage of Action that is stored in a directory from flags.
 // It is backed by on-disk proto messages.
 func NewOnDisk() (Store, error) {
-	s := &onDisk{values: make(map[string]*build_remote.ActionResult), basePath: *diskPath}
+	s := &onDisk{values: make(map[string]*remoteexecution.ActionResult), basePath: *diskPath}
 	if err := s.init(); err != nil {
 		return nil, err
 	}
@@ -32,7 +33,7 @@ type onDisk struct {
 	mu       sync.RWMutex
 	basePath string
 
-	values map[string]*build_remote.ActionResult
+	values map[string]*remoteexecution.ActionResult
 }
 
 func (s *onDisk) init() error {
@@ -52,7 +53,7 @@ func (s *onDisk) init() error {
 	return nil
 }
 
-func (s *onDisk) Get(actionDigest *build_remote.ContentDigest) (*build_remote.ActionResult, error) {
+func (s *onDisk) Get(actionDigest *remoteexecution.Digest) (*remoteexecution.ActionResult, error) {
 	key := util.ContentDigestToBase64(actionDigest)
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -67,21 +68,21 @@ func (s *onDisk) Get(actionDigest *build_remote.ContentDigest) (*build_remote.Ac
 	return ret, nil
 }
 
-func (s *onDisk) readActionFromDisk(key string) (*build_remote.ActionResult, error) {
+func (s *onDisk) readActionFromDisk(key string) (*remoteexecution.ActionResult, error) {
 	content, err := ioutil.ReadFile(path.Join(s.basePath, key))
 	if os.IsNotExist(err) {
 		return nil, grpc.Errorf(codes.NotFound, "action doesnt exist")
 	} else if err != nil {
 		return nil, grpc.Errorf(codes.Internal, "ondisk actionstore can't read file %v: %v", key, err)
 	}
-	res := &build_remote.ActionResult{}
+	res := &remoteexecution.ActionResult{}
 	if err := proto.Unmarshal(content, res); err != nil {
 		return nil, grpc.Errorf(codes.Internal, "action is unparsable %v: %v", key, err)
 	}
 	return res, nil
 }
 
-func (s *onDisk) Store(actionDigest *build_remote.ContentDigest, actionResult *build_remote.ActionResult) error {
+func (s *onDisk) Store(actionDigest *remoteexecution.Digest, actionResult *remoteexecution.ActionResult) error {
 	key := util.ContentDigestToBase64(actionDigest)
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -92,7 +93,7 @@ func (s *onDisk) Store(actionDigest *build_remote.ContentDigest, actionResult *b
 	return nil
 }
 
-func (s *onDisk) storeActionToDisk(key string, actionResult *build_remote.ActionResult) error {
+func (s *onDisk) storeActionToDisk(key string, actionResult *remoteexecution.ActionResult) error {
 	bytes, err := proto.Marshal(actionResult)
 	if err != nil {
 		return grpc.Errorf(codes.Internal, "action is unmarshable %v: %v", key, err)

@@ -2,7 +2,7 @@ package action
 
 import (
 	"github.com/mwitkow/bazel-distcache/common/util"
-	"github.com/mwitkow/bazel-distcache/proto/build/remote"
+	"google.golang.org/genproto/googleapis/devtools/remoteexecution/v1test"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"sync"
@@ -11,15 +11,15 @@ import (
 // NewOnDisk constructs *very* naive storage of ActionResults.
 // No persistence, no expiration, just a lot of YOLO.
 func NewInMemory() Store {
-	return &inMemory{values: make(map[string]*build_remote.ActionResult)}
+	return &inMemory{values: make(map[string]*remoteexecution.ActionResult)}
 }
 
 type inMemory struct {
 	mu     sync.RWMutex
-	values map[string]*build_remote.ActionResult
+	values map[string]*remoteexecution.ActionResult
 }
 
-func (s *inMemory) Get(actionDigest *build_remote.ContentDigest) (*build_remote.ActionResult, error) {
+func (s *inMemory) Get(actionDigest *remoteexecution.Digest) (*remoteexecution.ActionResult, error) {
 	key := util.ContentDigestToBase64(actionDigest)
 	s.mu.RLock()
 	val, exists := s.values[key]
@@ -30,7 +30,7 @@ func (s *inMemory) Get(actionDigest *build_remote.ContentDigest) (*build_remote.
 	return val, nil
 }
 
-func (s *inMemory) Store(actionDigest *build_remote.ContentDigest, actionResult *build_remote.ActionResult) error {
+func (s *inMemory) Store(actionDigest *remoteexecution.Digest, actionResult *remoteexecution.ActionResult) error {
 	key := util.ContentDigestToBase64(actionDigest)
 	s.mu.Lock()
 	s.values[key] = actionResult

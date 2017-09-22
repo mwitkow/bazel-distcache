@@ -1,6 +1,9 @@
 package action
 
-import "github.com/mwitkow/bazel-distcache/proto/build/remote"
+import (
+	"google.golang.org/genproto/googleapis/devtools/remoteexecution/v1test"
+)
+
 
 // Store is a general interface for caching ActionResults.
 // ActionResults are descriptions of bazel build actions (steps), with a set of outputs (held in content store),
@@ -9,8 +12,8 @@ import "github.com/mwitkow/bazel-distcache/proto/build/remote"
 type Store interface {
 	// Get returns an ActionResult by its digest.
 	// Must return grpc.NotFound error if no action exists. Other errors will cause failure of builds.
-	Get(actionDigest *build_remote.ContentDigest) (*build_remote.ActionResult, error)
+	Get(actionDigest *remoteexecution.Digest) (*remoteexecution.ActionResult, error)
 
 	// Store returns an ActionResult by its digest.
-	Store(actionDigest *build_remote.ContentDigest, actionResult *build_remote.ActionResult) error
+	Store(actionDigest *remoteexecution.Digest, actionResult *remoteexecution.ActionResult) error
 }

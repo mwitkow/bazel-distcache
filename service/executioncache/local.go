@@ -11,6 +11,8 @@ import (
 )
 
 // NewLocal builds the ExecutionCache gRPC service for local daemon.
+//
+// NOTE: This is *deprecated* in favour of the new implementaiton in actioncache.
 func NewLocal() build_remote.ExecutionCacheServiceServer {
 	store, err := action.NewOnDisk()
 	if err != nil {
