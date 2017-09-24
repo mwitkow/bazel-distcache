@@ -9,8 +9,8 @@ import (
 
 	"github.com/mwitkow/bazel-distcache/common/sharedflags"
 	"github.com/mwitkow/bazel-distcache/common/util"
-	"github.com/mwitkow/bazel-distcache/proto/build/remote"
 	"golang.org/x/net/context"
+	"google.golang.org/genproto/googleapis/devtools/remoteexecution/v1test"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 )
@@ -20,7 +20,7 @@ const (
 )
 
 var (
-	diskPath = sharedflags.Set.String("blobstore_ondisk_path", "/tmp/localcache-blobstore", "Path for the ondisk actio store directory.")
+	diskPath = sharedflags.Set.String("blobstore_ondisk_path", "/tmp/localcache-blobstore", "Path for the ondisk blob store directory.")
 )
 
 // NewOnDisk constructs *very* naive storage of Blobs that is stored in a directory from flags.
@@ -66,12 +66,12 @@ func (s *onDisk) cacheSize(blobKey string, size int64) {
 	s.mu.Unlock()
 }
 
-func (s *onDisk) Exists(ctx context.Context, blobDigest *build_remote.ContentDigest) (bool, error) {
+func (s *onDisk) Exists(ctx context.Context, blobDigest *remoteexecution.Digest) (bool, error) {
 	key := util.ContentDigestToBase64(blobDigest)
 	return s.getSize(key) != sizeNoExist, nil
 }
 
-func (s *onDisk) Read(ctx context.Context, blobDigest *build_remote.ContentDigest) (Reader, error) {
+func (s *onDisk) Read(ctx context.Context, blobDigest *remoteexecution.Digest) (Reader, error) {
 	key := util.ContentDigestToBase64(blobDigest)
 	fileName := path.Join(s.basePath, key)
 	size := s.getSize(key)
@@ -90,7 +90,7 @@ func (s *onDisk) Read(ctx context.Context, blobDigest *build_remote.ContentDiges
 	return &blobFile{digest: blobDigest, file: file}, nil
 }
 
-func (s *onDisk) Write(ctx context.Context, blobDigest *build_remote.ContentDigest) (Writer, error) {
+func (s *onDisk) Write(ctx context.Context, blobDigest *remoteexecution.Digest) (Writer, error) {
 	key := util.ContentDigestToBase64(blobDigest)
 	fileName := path.Join(s.basePath, key)
 	file, err := os.Create(fileName)
@@ -104,7 +104,7 @@ func (s *onDisk) Write(ctx context.Context, blobDigest *build_remote.ContentDige
 // blobFile is a general implementation of both Writer and Reader, and which one it is
 // depends on the particular mode of the file open underneath
 type blobFile struct {
-	digest *build_remote.ContentDigest
+	digest *remoteexecution.Digest
 	file   *os.File
 }
 
@@ -125,6 +125,6 @@ func (b *blobFile) Close() error {
 	return b.file.Close()
 }
 
-func (b *blobFile) Digest() *build_remote.ContentDigest {
+func (b *blobFile) Digest() *remoteexecution.Digest {
 	return b.digest
 }

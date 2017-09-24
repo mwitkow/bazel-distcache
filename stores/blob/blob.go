@@ -1,9 +1,10 @@
 package blob
 
 import (
-	"github.com/mwitkow/bazel-distcache/proto/build/remote"
-	"golang.org/x/net/context"
 	"io"
+
+	"golang.org/x/net/context"
+	"google.golang.org/genproto/googleapis/devtools/remoteexecution/v1test"
 )
 
 // Store is a general interface for storing ActionResults.
@@ -13,17 +14,17 @@ import (
 type Store interface {
 	// Exists returns whether the given blob exists for its digest.
 	// If errors occur, they are reported as errors, and should fail builds.
-	Exists(ctx context.Context, blobDigest *build_remote.ContentDigest) (bool, error)
+	Exists(ctx context.Context, blobDigest *remoteexecution.Digest) (bool, error)
 	// Read returns a Reader for the digest.
 	// Must return grpc.NotFound error if no blob exists. Other errors will cause failure of builds.
-	Read(ctx context.Context, blobDigest *build_remote.ContentDigest) (Reader, error)
+	Read(ctx context.Context, blobDigest *remoteexecution.Digest) (Reader, error)
 	// Write returns a BlogWriter for the digest.
-	Write(ctx context.Context, blobDigest *build_remote.ContentDigest) (Writer, error)
+	Write(ctx context.Context, blobDigest *remoteexecution.Digest) (Writer, error)
 }
 
 type digestGetter interface {
 	// Digest returns the content digest of the blob served.
-	Digest() *build_remote.ContentDigest
+	Digest() *remoteexecution.Digest
 }
 
 // Reader is an interface for accessing blobs in store.
